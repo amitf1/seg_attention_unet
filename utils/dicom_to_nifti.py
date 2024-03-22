@@ -2,7 +2,7 @@ import SimpleITK as sitk
 import os
 from pathlib import Path
 
-def dicom2niftii(root_dicom_directory, nifti_output_path):
+def dicom2nifti(root_dicom_directory, nifti_output_path):
     if not os.path.exists(nifti_output_path):
         os.mkdir(nifti_output_path)
     root_dicom_directory = Path(root_dicom_directory)
@@ -36,4 +36,4 @@ def dicom2niftii(root_dicom_directory, nifti_output_path):
 if __name__ == "__main__":
     root_dicom = "/Users/novoha/Documents/Torso/pancreas/CT-82/manifest-1599750808610/Pancreas-CT"
     nifti_out = "/Users/novoha/Documents/Torso/pancreas/images"
-    dicom2niftii(root_dicom, nifti_out)
+    dicom2nifti(root_dicom, nifti_out)
