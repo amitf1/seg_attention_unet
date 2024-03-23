@@ -1,5 +1,7 @@
 import torch
 import torch.nn as nn
+from torch.nn import init
+from torch.nn import functional as F
 
 def deep_supervision_loss(preds, label, base_loss_function, deep_layers_weight_factor=1):
 
@@ -27,7 +29,7 @@ def deep_supervision_loss(preds, label, base_loss_function, deep_layers_weight_f
     return loss
 
 class ConvBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, downsample=True):
+    def __init__(self, in_channels, out_channels):
         super(ConvBlock, self).__init__()
         self.conv = nn.Sequential(
             nn.Conv3d(in_channels, out_channels, kernel_size=3,stride=1,padding=1,bias=True),
@@ -37,39 +39,95 @@ class ConvBlock(nn.Module):
             nn.BatchNorm3d(out_channels),
             nn.ReLU(inplace=True)
         )
-        self.downsample = nn.MaxPool2d(kernel_size=2,stride=2)
+        
     def forward(self, x):
-        x = self.conv(x)
+        return self.conv(x)
 
-        x = self.downsample(x)
-        return x
+class UpBlock(nn.Module):
+    def __init__(self):
+        super(UpBlock, self).__init__()
+        self.up = nn.Upsample(scale_factor=2, mode='trilinear')
+
+
+    def forward(self, inputs1, inputs2):
+        outputs2 = self.up(inputs2)
+        offset = outputs2.size()[2] - inputs1.size()[2]
+        padding = 2 * [offset // 2, offset // 2, 0]
+        outputs1 = F.pad(inputs1, padding)
+        return torch.cat([outputs1, outputs2], 1)
     
-
-class UpConvBlock(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super(UpConvBlock, self).__init__()
-        self.up = nn.Sequential(
-            nn.Upsample(scale_factor=2),
-            nn.Conv3d(in_channels, out_channels,kernel_size=3,stride=1,padding=1,bias=True),
-		    nn.BatchNorm3d(out_channels),
-			nn.ReLU(inplace=True)
-        )
-
-    def forward(self,x):
-        x = self.up(x)
-        return x
-
-
 class AtentionBlock(nn.module):
     """
     Grid Attention Block - inputs are x and g (where g denoting gating signal) feature maps from two sequential levels of a unet architecture with a factor of two in saptial dimension and n_channels 
      (b, c, h, w, d) and (b, 2c, h//2, w//2, d//2) the output is the attention weight for x with dim (b, c, h, w, d)
     
     """
-    def __init__(self, in_channels, gating_channels, inter_channels=None,
-                 sub_sample_factor=(2,2,2)):
+    def __init__(self, in_channels, gating_channels, inter_channels):
         super(AtentionBlock, self).__init__()
+        self.in_channels = in_channels
+        self.gating_channels = gating_channels
+        self.inter_channels = inter_channels
+        self.W = nn.Sequential(nn.Conv3d(in_channels=self.in_channels, out_channels=self.in_channels, kernel_size=1, stride=1, padding=0),
+                               nn.BatchNorm3d(self.in_channels),
+        )
+        # according to the paper no bias on x, bias exists in g and psi
+        self.W_x = nn.Conv3d(in_channels=self.in_channels, out_channels=self.inter_channels,
+                             kernel_size=1, stride=2, padding=0, bias=False)
+        self.W_g = nn.Conv3d(in_channels=self.gating_channels, out_channels=self.inter_channels,
+                           kernel_size=1, stride=1, padding=0, bias=True)
+        self.psi = nn.Conv3d(in_channels=self.inter_channels, out_channels=1, kernel_size=1, stride=1, padding=0, bias=True)
+        self.sigma1 = nn.Relu()
+        self.sigma2 = nn.Sigmoid()
+        self.resampler = nn.Upsample(scale_factor=2, mode='trilinear')
+
+    def forward(self, x, g):
+        x1 = self.W_x(x)
+        g1 = self.W_g(g)
+        q_att = self.sigma1(x1 + g1, inplace=True)
+        q_att = self.psi(q_att)
+        alpha = self.sigma2(q_att)
+        alpha = self.resampler(alpha)
+        x_out = alpha.expand_as(x) * x
+        return x_out, alpha
 
 class AttentionUNET(nn.Module):
-    def __init__(self):
+    def __init__(self, in_channels, out_channel):
         super(AttentionUNET, self).__init__()
+        self.conv1 = ConvBlock(in_channels, 64)
+        self.downsample1 = nn.MaxPool2d(kernel_size=2,stride=2)
+        self.conv2 = ConvBlock(64, 128)
+        self.downsample2 = nn.MaxPool2d(kernel_size=2,stride=2)
+        self.conv3 = ConvBlock(128, 256)
+        self.downsample3 = nn.MaxPool2d(kernel_size=2,stride=2)
+        self.conv4 = ConvBlock(256, 512)
+        self.upsample1 = nn.Upsample(scale_factor=2)
+        self.attn1 = AtentionBlock(512, 256, 128)
+        self.conv5 = ConvBlock(256, 128)
+        self.upsample2 = nn.Upsample(scale_factor=2)
+        self.attn2 = AtentionBlock(256, 128, 64)
+        self.conv6 = ConvBlock(128, 64)
+        self.upsample3 = nn.Upsample(scale_factor=2)
+        self.attn3 = AtentionBlock(128, 64, 32)
+        self.conv7 = ConvBlock(128, out_channel)
+        self.apply(weights_init)
+
+    def forward(self, x):
+        x1 = self.conv1(x)
+        x1_d = self.downsample1(x1)
+        x2 = self.conv2(x1_d)
+        x2_d = self.downsample1(x2)
+        x3 = self.conv3(x2_d)
+        x3_d = self.downsample1(x3)
+        x4 = self.conv4(x3_d)
+        attn1 = self.attn1(x3, x4)
+        attn2 = self.attn2(x2, )
+        attn3 = self.attn3(x1, )
+
+def weights_init(m):
+    classname = m.__class__.__name__
+    #print(classname)
+    if classname.find('Conv') != -1:
+        init.kaiming_normal(m.weight.data, a=0, mode='fan_in')
+    elif classname.find('BatchNorm') != -1:
+        init.normal(m.weight.data, 1.0, 0.02)
+        init.constant(m.bias.data, 0.0)
