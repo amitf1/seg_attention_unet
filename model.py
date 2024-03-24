@@ -54,7 +54,7 @@ class UpBlock(nn.Module):
         # outputs1 = F.pad(inputs1, padding)
         return torch.cat([inputs1, inputs2], 1)
     
-class AtentionBlock(nn.module):
+class AtentionBlock(nn.Module):
     """
     Grid Attention Block - inputs are x and g (where g denoting gating signal) feature maps from two sequential levels of a unet architecture with a factor of two in saptial dimension and n_channels 
      (b, c, h, w, d) and (b, 2c, h//2, w//2, d//2) the output is the attention weight for x with dim (b, c, h, w, d)

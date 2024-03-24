@@ -19,7 +19,6 @@ from model import AttentionUNET, deep_supervision_loss
 
 
 
-
 def save_checkpoint(cp_path, model, optimizer, last_epoch, best_metric, epoch_loss):
     checkpoint = {
         'time': datetime.now().strftime("%y_%m_%d_%H_%M_%S"),
@@ -45,36 +44,12 @@ def load_checkpoint(cp_path, model, optimizer):
  
     return model, optimizer, last_epoch, best_metric
 
-def main():
-    root_dir = ""
+def main(train_files, val_files, batch_size, load, cp_path, max_epochs, loss_curve_path):
 
-    data_dir = os.path.join(root_dir, "")
-
-    train_images = sorted(glob.glob(os.path.join(data_dir, "images", "*.nii.gz")))
-    train_labels = sorted(glob.glob(os.path.join(data_dir, "labels", "*.nii.gz")))
-    cp_path = os.path.join(root_dir, "best_metric_model.pth")
-    load = False
-    loss_curve_path = os.path.join(root_dir, "loss.png")
-    data_dicts = [{"image": image_name, "label": label_name} for image_name, label_name in zip(train_images, train_labels)]
-    
-    train_files, test_files = train_test_split(data_dicts, 0.75, random_state=0)
-    train_files, val_files = train_test_split(data_dicts, 0.85, random_state=0)
-    data_split = {"train_files" : train_files, "val_files" : val_files, "test_files" : test_files}
-    with open("data_split.json", "w") as outfile: 
-        json.dump(data_split, outfile)
-
-    # with open("data_split.json") as json_file:
-    #     data_split = json.load(json_file)
-    # train_files, val_files, test_files = data_split["train_files"], data_split["val_files"], data_split["test_files"]
-
-    batch_size = 2
-    max_epochs = 600
-    # train_ds = CacheDataset(data=train_files, transform=train_transforms, cache_rate=1.0, num_workers=4)
     set_determinism(seed=0)
     train_ds = Dataset(data=train_files, transform=train_transforms)
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
 
-    # val_ds = CacheDataset(data=val_files, transform=val_transforms, cache_rate=1.0, num_workers=4)
     val_ds = Dataset(data=val_files, transform=val_transforms)
     val_loader = DataLoader(val_ds, batch_size=1)
 
@@ -159,4 +134,28 @@ def main():
                     f"\nbest mean dice: {best_metric:.4f} "
                     f"at epoch: {best_metric_epoch}"
                 )
-  
+
+if __name__ == "__main__":
+    root_dir = ""
+
+    data_dir = os.path.join(root_dir, "")
+
+    train_images = sorted(glob.glob(os.path.join(data_dir, "images", "*.nii.gz")))
+    train_labels = sorted(glob.glob(os.path.join(data_dir, "labels", "*.nii.gz")))
+    cp_path = os.path.join(root_dir, "best_metric_model.pth")
+    load = False
+    loss_curve_path = os.path.join(root_dir, "loss.png")
+    data_dicts = [{"image": image_name, "label": label_name} for image_name, label_name in zip(train_images, train_labels)]
+    
+    train_files, test_files = train_test_split(data_dicts, 0.75, random_state=0)
+    train_files, val_files = train_test_split(data_dicts, 0.85, random_state=0)
+    data_split = {"train_files" : train_files, "val_files" : val_files, "test_files" : test_files}
+    with open("data_split.json", "w") as outfile: 
+        json.dump(data_split, outfile)
+
+    # with open("data_split.json") as json_file:
+    #     data_split = json.load(json_file)
+    # train_files, val_files, test_files = data_split["train_files"], data_split["val_files"], data_split["test_files"]
+
+    batch_size = 2
+    max_epochs = 600
