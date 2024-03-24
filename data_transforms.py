@@ -45,7 +45,7 @@ val_transforms = Compose(
     [
         LoadImaged(keys=["image", "label"]),
         EnsureChannelFirstd(keys=["image", "label"]),
-        NormalizeIntensityd(keys=["image"]),,
+        NormalizeIntensityd(keys=["image"]),
         CropForegroundd(keys=["image", "label"], source_key="image"),
         Orientationd(keys=["image", "label"], axcodes="RAS"),
         Spacingd(keys=["image", "label"], pixdim=(2.0, 2.0, 2.0), mode=("bilinear", "nearest")),

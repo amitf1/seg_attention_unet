@@ -75,7 +75,7 @@ class AtentionBlock(nn.Module):
         self.W_g = nn.Conv3d(in_channels=self.gating_channels, out_channels=self.inter_channels,
                            kernel_size=1, stride=1, padding=0, bias=True)
         self.psi = nn.Conv3d(in_channels=self.inter_channels, out_channels=1, kernel_size=1, stride=1, padding=0, bias=True)
-        self.sigma1 = nn.Relu()
+        self.sigma1 = nn.ReLU()
         self.sigma2 = nn.Sigmoid()
         self.resampler = nn.Upsample(scale_factor=2, mode='trilinear')
 
