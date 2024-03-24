@@ -136,9 +136,10 @@ class AttentionUNET(nn.Module):
 
 def weights_init(m):
     classname = m.__class__.__name__
-    #print(classname)
-    if classname.find('Conv') != -1:
-        init.kaiming_normal(m.weight.data, a=0, mode='fan_in')
-    elif classname.find('BatchNorm') != -1:
-        init.normal(m.weight.data, 1.0, 0.02)
-        init.constant(m.bias.data, 0.0)
+    if hasattr(m, 'weight') and getattr(m, 'weight') is not None:
+        if classname.find('Conv') != -1:
+            init.kaiming_normal_(m.weight.data, a=0, mode='fan_in')
+        elif classname.find('BatchNorm') != -1:
+            init.normal_(m.weight.data, 1.0, 0.02)
+    if hasattr(m, 'bias') and getattr(m, 'bias') is not None:
+        init.constant_(m.bias.data, 0.0)
