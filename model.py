@@ -89,7 +89,7 @@ class AtentionBlock(nn.Module):
     def forward(self, x, g):
         x1 = self.W_x(x)
         g1 = self.W_g(g)
-        q_att = self.sigma1(x1 + g1, inplace=True)
+        q_att = self.sigma1(x1 + g1)
         q_att = self.psi(q_att)
         alpha = self.sigma2(q_att)
         alpha = self.resampler(alpha)
