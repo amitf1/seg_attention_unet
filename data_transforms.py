@@ -56,6 +56,3 @@ val_transforms = Compose(
         Spacingd(keys=["image", "label"], pixdim=(2.0, 2.0, 2.0), mode=("bilinear", "nearest")),
     ]
 )
-
-post_pred = Compose([AsDiscrete(argmax=True, to_onehot=2)])
-post_label = Compose([AsDiscrete(to_onehot=2)])

@@ -31,7 +31,7 @@ class DeepSuperHead(nn.Module):
                                  nn.Upsample(scale_factor=scale_factor, mode='trilinear'))
 
     def forward(self, input):
-        return self.dsh(input)
+        return self.dsh(input).unsqueeze(1)
 
 class ConvBlock(nn.Module):
     def __init__(self, in_channels, out_channels):
@@ -124,8 +124,8 @@ class AttentionUNET(nn.Module):
         self.upsample3 = UpBlock() # out 128+64
         self.conv7 = ConvBlock(128+64, out_channels)
 
-        self.dsh1 = DeepSuperHead(128, 1, 2)
-        self.dsh2 = DeepSuperHead(256, 1, 4)
+        self.dsh1 = DeepSuperHead(128, out_channels, 2)
+        self.dsh2 = DeepSuperHead(256, out_channels, 4)
 
         self.apply(weights_init)
 
@@ -143,7 +143,11 @@ class AttentionUNET(nn.Module):
         x6 = self.conv6(self.upsample2(attn2, x5))
         attn3, _ = self.attn3(x1, x6)
         x7 = self.conv7(self.upsample3(attn3, x6))
-        return torch.cat([x7, self.dsh1(x6), self.dsh2(x5)][:self.n_deep_suprvision], 1)
+        if self.training:
+            out = torch.cat([x7.unsqueeze(1), self.dsh1(x6), self.dsh2(x5)][:self.n_deep_suprvision], 1)
+        else:
+            out = x7
+        return out
 
 def weights_init(m):
     classname = m.__class__.__name__

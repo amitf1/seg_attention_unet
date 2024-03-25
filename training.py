@@ -1,4 +1,6 @@
 
+import os
+# os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 from monai.utils import set_determinism
 from monai.metrics import DiceMetric
 from monai.losses import DiceLoss
@@ -9,14 +11,17 @@ import torch
 import matplotlib.pyplot as plt
 import tempfile
 import shutil
-import os
 import glob
-from data_transforms import train_transforms, val_transforms, post_label, post_pred
+from data_transforms import train_transforms, val_transforms
 from sklearn.model_selection import train_test_split
 import json
 from datetime import datetime
 from model import AttentionUNET, deep_supervision_loss
-
+from monai.transforms import (
+    AsDiscrete,
+    Compose,
+    Activations
+)
 
 
 def save_checkpoint(cp_path, model, optimizer, last_epoch, best_metric, epoch_loss):
@@ -58,7 +63,7 @@ def main(train_files, val_files, batch_size, load, cp_path, max_epochs, loss_cur
     model.to(device)
     loss_function = DiceLoss(to_onehot_y=True, softmax=True)
     optimizer = torch.optim.Adam(model.parameters(), 1e-4)
-    dice_metric = DiceMetric(include_background=False, reduction="mean")
+    dice_metric = DiceMetric(include_background=True, reduction="mean_batch")
 
 
     
@@ -111,26 +116,30 @@ def main(train_files, val_files, batch_size, load, cp_path, max_epochs, loss_cur
                     )
                     roi_size = (96, 96, 96)
                     sw_batch_size = 4
-                    val_outputs = sliding_window_inference(val_inputs, roi_size, sw_batch_size, model)
+                    val_outputs = sliding_window_inference(val_inputs, roi_size, sw_batch_size, model, overlap=0.25, mode="gaussian")
+            
+                    post_pred = Compose([Activations(softmax=True), AsDiscrete(argmax=True, to_onehot=2)])
+                    post_label = Compose([AsDiscrete(to_onehot=2)])
                     val_outputs = [post_pred(i) for i in decollate_batch(val_outputs)]
                     val_labels = [post_label(i) for i in decollate_batch(val_labels)]
                     # compute metric for current iteration
+                    # print(val_outputs[0].shape, val_labels[0].shape)
                     dice_metric(y_pred=val_outputs, y=val_labels)
 
                 # aggregate the final mean dice result
-                metric = dice_metric.aggregate().item()
+                metric = dice_metric.aggregate()
                 # reset the status for next validation round
                 dice_metric.reset()
 
                 metric_values.append(metric)
-                if metric > best_metric:
-                    best_metric = metric
+                if metric[1] > best_metric:
+                    best_metric = metric[1]
                     best_metric_epoch = epoch + 1
-                    save_checkpoint(cp_path, model, optimizer, epoch, metric, epoch, epoch_loss_values)
+                    save_checkpoint(cp_path, model, optimizer, epoch, metric, epoch_loss_values)
                     #torch.save(model.state_dict(), os.path.join(root_dir, "best_metric_model.pth"))
                     print("saved new best metric model")
                 print(
-                    f"current epoch: {epoch + 1} current mean dice: {metric:.4f}"
+                    f"current epoch: {epoch + 1} current mean dice: {metric}"
                     f"\nbest mean dice: {best_metric:.4f} "
                     f"at epoch: {best_metric_epoch}"
                 )
@@ -149,7 +158,6 @@ if __name__ == "__main__":
     batch_size = 2
     max_epochs = 600
     data_dicts = [{"image": image_name, "label": label_name} for image_name, label_name in zip(train_images, train_labels)]
-    print(data_dicts)
     train_files, test_files = train_test_split(data_dicts, train_size=0.75, random_state=0)
     train_files, val_files = train_test_split(train_files, train_size=0.85, random_state=0)
     data_split = {"train_files" : train_files, "val_files" : val_files, "test_files" : test_files}
