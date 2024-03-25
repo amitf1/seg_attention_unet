@@ -101,10 +101,10 @@ class AttentionUNET(nn.Module):
         super(AttentionUNET, self).__init__()
         self.n_deep_suprvision = n_deep_suprvision
         self.conv1 = ConvBlock(in_channels, 64)
-        self.downsample1 = nn.MaxPool2d(kernel_size=2,stride=2)
+        self.downsample1 = nn.MaxPool3d(kernel_size=2,stride=2)
 
         self.conv2 = ConvBlock(64, 128)
-        self.downsample2 = nn.MaxPool2d(kernel_size=2,stride=2)
+        self.downsample2 = nn.MaxPool3d(kernel_size=2,stride=2)
 
         self.conv3 = ConvBlock(128, 256)
         self.downsample3 = nn.MaxPool2d(kernel_size=2,stride=2)
