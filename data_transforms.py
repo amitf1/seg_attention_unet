@@ -26,7 +26,7 @@ train_transforms = Compose(
         RandCropByPosNegLabeld(
             keys=["image", "label"],
             label_key="label",
-            spatial_size=(160, 160, 96),
+            spatial_size=(96, 96, 96),
             pos=1,
             neg=1,
             num_samples=4,
@@ -36,7 +36,7 @@ train_transforms = Compose(
         RandAffined(
             keys=['image', 'label'],
             mode=('bilinear', 'nearest'),
-            prob=1.0, spatial_size=(160, 160, 96),
+            prob=1.0, spatial_size=(96, 96, 96),
             rotate_range=(0, 0, np.pi/15),
             scale_range=(0.1, 0.1, 0.1)),
     ]

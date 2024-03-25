@@ -109,7 +109,7 @@ def main(train_files, val_files, batch_size, load, cp_path, max_epochs, loss_cur
                         val_data["image"].to(device),
                         val_data["label"].to(device),
                     )
-                    roi_size = (160, 160, 96)
+                    roi_size = (96, 96, 96)
                     sw_batch_size = 4
                     val_outputs = sliding_window_inference(val_inputs, roi_size, sw_batch_size, model)
                     val_outputs = [post_pred(i) for i in decollate_batch(val_outputs)]
