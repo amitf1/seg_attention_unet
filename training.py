@@ -1,5 +1,5 @@
 
-from monai.utils import first, set_determinism
+from monai.utils import set_determinism
 from monai.metrics import DiceMetric
 from monai.losses import DiceLoss
 from monai.inferers import sliding_window_inference
@@ -136,26 +136,27 @@ def main(train_files, val_files, batch_size, load, cp_path, max_epochs, loss_cur
                 )
 
 if __name__ == "__main__":
-    root_dir = ""
-
-    data_dir = os.path.join(root_dir, "")
-
+    root_dir = "/Users/novoha/Documents/personal/dl_project"
+    data_dir = os.path.join(root_dir, "data")
     train_images = sorted(glob.glob(os.path.join(data_dir, "images", "*.nii.gz")))
     train_labels = sorted(glob.glob(os.path.join(data_dir, "labels", "*.nii.gz")))
+    loss_curve_path = os.path.join(root_dir, "loss.png")
+    data_split_path = os.path.join(root_dir, "data_split.json")
+
     cp_path = os.path.join(root_dir, "best_metric_model.pth")
     load = False
-    loss_curve_path = os.path.join(root_dir, "loss.png")
-    data_dicts = [{"image": image_name, "label": label_name} for image_name, label_name in zip(train_images, train_labels)]
-    
-    train_files, test_files = train_test_split(data_dicts, 0.75, random_state=0)
-    train_files, val_files = train_test_split(data_dicts, 0.85, random_state=0)
-    data_split = {"train_files" : train_files, "val_files" : val_files, "test_files" : test_files}
-    with open("data_split.json", "w") as outfile: 
-        json.dump(data_split, outfile)
-
-    # with open("data_split.json") as json_file:
-    #     data_split = json.load(json_file)
-    # train_files, val_files, test_files = data_split["train_files"], data_split["val_files"], data_split["test_files"]
 
     batch_size = 2
     max_epochs = 600
+    data_dicts = [{"image": image_name, "label": label_name} for image_name, label_name in zip(train_images, train_labels)]
+    print(data_dicts)
+    train_files, test_files = train_test_split(data_dicts, train_size=0.75, random_state=0)
+    train_files, val_files = train_test_split(train_files, train_size=0.85, random_state=0)
+    data_split = {"train_files" : train_files, "val_files" : val_files, "test_files" : test_files}
+    with open(data_split_path, "w") as outfile: 
+        json.dump(data_split, outfile)
+
+    # with open(data_split_path) as json_file:
+    #     data_split = json.load(json_file)
+    # train_files, val_files, test_files = data_split["train_files"], data_split["val_files"], data_split["test_files"]
+    main(train_files, val_files, batch_size, load, cp_path, max_epochs, loss_curve_path)

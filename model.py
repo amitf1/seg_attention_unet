@@ -14,17 +14,24 @@ def deep_supervision_loss(preds, label, base_loss_function):
     weights = weights / weights.sum() # for n_preds=3: [4/7 , 2/7, 1/7] each layer is twice as important as it's lower neigbour
    
     loss = None
-    interpolated_label = label
     for weight, pred in zip(weights, preds):
         if loss is None:
-            loss = base_loss_function(pred, interpolated_label)*weight
+            loss = base_loss_function(pred, label)*weight
         else:
-            loss += base_loss_function(pred, interpolated_label)*weight
-        interpolated_label = F.interpolate(interpolated_label, scale_factor=0.5)
+            loss += base_loss_function(pred, label)*weight
     if loss < 0:
         raise(ValueError(f"loss should be non negative but got loss={loss}"))
 
     return loss
+
+class DeepSuperHead(nn.Module):
+    def __init__(self, in_size, out_size, scale_factor):
+        super(DeepSuperHead, self).__init__()
+        self.dsh = nn.Sequential(nn.Conv3d(in_size, out_size, kernel_size=1, stride=1, padding=0),
+                                 nn.Upsample(scale_factor=scale_factor, mode='trilinear'))
+
+    def forward(self, input):
+        return self.dsh(input)
 
 class ConvBlock(nn.Module):
     def __init__(self, in_channels, out_channels):
@@ -90,7 +97,7 @@ class AtentionBlock(nn.Module):
         return x_out, alpha
 
 class AttentionUNET(nn.Module):
-    def __init__(self, in_channels, out_channel, n_deep_suprvision):
+    def __init__(self, in_channels, out_channels, n_deep_suprvision):
         super(AttentionUNET, self).__init__()
         self.n_deep_suprvision = n_deep_suprvision
         self.conv1 = ConvBlock(in_channels, 64)
@@ -104,17 +111,21 @@ class AttentionUNET(nn.Module):
 
         self.conv4 = ConvBlock(256, 512)
         
-        self.attn1 = AtentionBlock(512, 256, 128)
-        self.upsample1 = UpBlock()
-        self.conv5 = ConvBlock(256, 128)
+        self.attn1 = AtentionBlock(256, 512, 256) # out 256
+        self.upsample1 = UpBlock() # out 512+256
+        self.conv5 = ConvBlock(512+256, 256)
         
-        self.attn2 = AtentionBlock(256, 128, 64)
-        self.upsample2 = UpBlock()
-        self.conv6 = ConvBlock(128, 64)
+        self.attn2 = AtentionBlock(128, 256, 128) # out 128
+        self.upsample2 = UpBlock() # out 256+128
+        self.conv6 = ConvBlock(256+128, 128)
 
-        self.upsample3 = UpBlock()
-        self.attn3 = AtentionBlock(128, 64, 32)
-        self.conv7 = ConvBlock(128, out_channel)
+        
+        self.attn3 = AtentionBlock(64, 128, 64) #out 64
+        self.upsample3 = UpBlock() # out 128+64
+        self.conv7 = ConvBlock(128+64, out_channels)
+
+        self.dsh1 = DeepSuperHead(128, 1, 2)
+        self.dsh2 = DeepSuperHead(256, 1, 4)
 
         self.apply(weights_init)
 
@@ -132,7 +143,7 @@ class AttentionUNET(nn.Module):
         x6 = self.conv6(self.upsample2(attn2, x5))
         attn3 = self.attn3(x1, x6)
         x7 = self.conv7(self.upsample3(attn3, x6))
-        return torch.cat([x7, x6, x5][:self.n_deep_suprvision], 1)
+        return torch.cat([x7, self.dsh1(x6), self.dsh2(x5)][:self.n_deep_suprvision], 1)
 
 def weights_init(m):
     classname = m.__class__.__name__
