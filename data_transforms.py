@@ -13,16 +13,21 @@ from monai.transforms import (
     Spacingd,
     Invertd,
     NormalizeIntensityd,
-    RandAffined
+    RandAffined,
+    SpatialPadd
 )
 train_transforms = Compose(
     [
-        LoadImaged(keys=["image", "label"]), 
-        EnsureChannelFirstd(keys=["image", "label"]),
+        LoadImaged(keys=["image", "label"], ensure_channel_first=True), 
+
         NormalizeIntensityd(keys=["image"]),
         CropForegroundd(keys=["image", "label"], source_key="image"),
         Orientationd(keys=["image", "label"], axcodes="RAS"),
         Spacingd(keys=["image", "label"], pixdim=(2.0, 2.0, 2.0), mode=("bilinear", "nearest")),
+        SpatialPadd(
+            keys=["image", "label"],
+            spatial_size=(96, 96, 96),
+        ),
         RandCropByPosNegLabeld(
             keys=["image", "label"],
             label_key="label",
