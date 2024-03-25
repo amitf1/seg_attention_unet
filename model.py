@@ -130,9 +130,7 @@ class AttentionUNET(nn.Module):
         self.apply(weights_init)
 
     def forward(self, x):
-        print(x.shape)
         x1 = self.conv1(x)
-        print(x1.shape)
         x1_d = self.downsample1(x1)
         x2 = self.conv2(x1_d)
         x2_d = self.downsample1(x2)
