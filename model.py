@@ -158,3 +158,69 @@ def weights_init(m):
             init.normal_(m.weight.data, 1.0, 0.02)
     if hasattr(m, 'bias') and getattr(m, 'bias') is not None:
         init.constant_(m.bias.data, 0.0)
+
+
+class DeeperAttentionUNET(nn.Module):
+    def __init__(self, in_channels, out_channels, n_deep_suprvision):
+        super(DeeperAttentionUNET, self).__init__()
+        self.n_deep_suprvision = n_deep_suprvision
+        self.conv1 = ConvBlock(in_channels, 64)
+        self.downsample1 = nn.MaxPool3d(kernel_size=2, stride=2)
+
+        self.conv2 = ConvBlock(64, 128)
+        self.downsample2 = nn.MaxPool3d(kernel_size=2, stride=2)
+
+        self.conv3 = ConvBlock(128, 256)
+        self.downsample3 = nn.MaxPool2d(kernel_size=2, stride=2)
+
+        self.conv4 = ConvBlock(256, 512)
+        self.downsample4 = nn.MaxPool2d(kernel_size=2, stride=2)
+
+        self.conv5 = ConvBlock(512, 1024)
+
+        self.attn1 = AtentionBlock(512, 1024, 512)  # out 512
+
+        self.upsample1 = UpBlock()  # out 1024+512
+        self.conv6 = ConvBlock(1024 + 512, 512)
+
+        self.attn2 = AtentionBlock(256, 512, 256)  # out 256
+        self.upsample2 = UpBlock()  # out 512+256
+        self.conv7 = ConvBlock(512 + 256, 256)
+
+        self.attn3 = AtentionBlock(128, 256, 128)  # out 128
+        self.upsample3 = UpBlock()  # out 256+128
+        self.conv8 = ConvBlock(256 + 128, 128)
+
+        self.attn4 = AtentionBlock(64, 128, 64)  # out 64
+        self.upsample4 = UpBlock()  # out 128+64
+        self.conv9 = ConvBlock(128 + 64, out_channels)
+
+        self.dsh1 = DeepSuperHead(128, out_channels, 2)
+        self.dsh2 = DeepSuperHead(256, out_channels, 4)
+
+        self.apply(weights_init)
+
+    def forward(self, x):
+        x1 = self.conv1(x)
+        x1_d = self.downsample1(x1)
+        x2 = self.conv2(x1_d)
+        x2_d = self.downsample1(x2)
+        x3 = self.conv3(x2_d)
+        x3_d = self.downsample1(x3)
+        x4 = self.conv4(x3_d)
+        x4_d = self.downsample1(x4)
+        x5 = self.conv5(x4_d)
+        attn1, _ = self.attn1(x4, x5)
+        x6 = self.conv6(self.upsample1(attn1, x5))
+        attn2, _ = self.attn2(x3, x6)
+        x7 = self.conv7(self.upsample2(attn2, x6))
+        attn3, _ = self.attn3(x2, x7)
+        x8 = self.conv8(self.upsample3(attn3, x7))
+        attn4, _ = self.attn4(x1, x8)
+        x9 = self.conv9(self.upsample4(attn4, x8))
+        if self.training:
+            out = torch.cat([x9.unsqueeze(1), self.dsh1(x8), self.dsh2(x7)][:self.n_deep_suprvision], 1)
+        else:
+            out = x9
+        return out
+
