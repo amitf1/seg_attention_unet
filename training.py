@@ -3,16 +3,14 @@ import os
 # os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 from monai.utils import set_determinism
 from monai.metrics import DiceMetric
-from monai.losses import DiceLoss
+from monai.losses import DiceLoss, DiceCELoss
 from monai.inferers import sliding_window_inference
-from monai.data import CacheDataset, DataLoader, Dataset, decollate_batch
+from monai.data import DataLoader, Dataset, decollate_batch
 from monai.config import print_config
 import torch
 import matplotlib.pyplot as plt
-import tempfile
-import shutil
 import glob
-from data_transforms import train_transforms, val_transforms
+from data_transforms import get_transforms
 from sklearn.model_selection import train_test_split
 import json
 from datetime import datetime
@@ -36,37 +34,34 @@ def save_checkpoint(cp_path, model, optimizer, last_epoch, best_metric, epoch_lo
         }
 
     torch.save(checkpoint, cp_path)
+
 def load_checkpoint(cp_path, model, optimizer):
-    
     checkpoint = torch.load(cp_path)
-
     model.load_state_dict(checkpoint['model_state_dict'])
- 
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-
     last_epoch = checkpoint['epoch']
     best_metric = checkpoint['best_metric']
  
     return model, optimizer, last_epoch, best_metric
 
-def main(train_files, val_files, batch_size, load, cp_path, max_epochs, loss_curve_path):
+def main(train_files, val_files, batch_size, load, cp_path, max_epochs, loss_curve_path, add_ce_loss=False):
 
-    set_determinism(seed=0)
+    set_determinism(seed=0) # set the random seed for reproducabilty
+    train_transforms = get_transforms(train=True)
     train_ds = Dataset(data=train_files, transform=train_transforms)
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
 
+    val_transforms = get_transforms(train=False)
     val_ds = Dataset(data=val_files, transform=val_transforms)
     val_loader = DataLoader(val_ds, batch_size=1)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = AttentionUNET(1, 2, 3)
+    model = AttentionUNET(in_channels=1, out_channels=2, n_deep_supervision=3)
     model.to(device)
-    loss_function = DiceLoss(to_onehot_y=True, softmax=True)
+    loss_function = DiceCELoss(to_onehot_y=True, softmax=True) if add_ce_loss else DiceLoss(to_onehot_y=True, softmax=True) 
     optimizer = torch.optim.Adam(model.parameters(), 1e-4)
     dice_metric = DiceMetric(include_background=True, reduction="mean_batch")
-
-
-    
+    print(loss_function)
     val_interval = 2
     best_metric = -1
     best_metric_epoch = -1
@@ -123,7 +118,6 @@ def main(train_files, val_files, batch_size, load, cp_path, max_epochs, loss_cur
                     val_outputs = [post_pred(i) for i in decollate_batch(val_outputs)]
                     val_labels = [post_label(i) for i in decollate_batch(val_labels)]
                     # compute metric for current iteration
-                    # print(val_outputs[0].shape, val_labels[0].shape)
                     dice_metric(y_pred=val_outputs, y=val_labels)
 
                 # aggregate the final mean dice result
@@ -136,7 +130,6 @@ def main(train_files, val_files, batch_size, load, cp_path, max_epochs, loss_cur
                     best_metric = metric[1]
                     best_metric_epoch = epoch + 1
                     save_checkpoint(cp_path, model, optimizer, epoch, metric, epoch_loss_values)
-                    #torch.save(model.state_dict(), os.path.join(root_dir, "best_metric_model.pth"))
                     print("saved new best metric model")
                 print(
                     f"current epoch: {epoch + 1} current mean dice: {metric}"
@@ -145,7 +138,7 @@ def main(train_files, val_files, batch_size, load, cp_path, max_epochs, loss_cur
                 )
 
 if __name__ == "__main__":
-    root_dir = "/Users/novoha/Documents/personal/dl_project"
+    root_dir = "/nvcr/algo/projects/workdir/afeldman/pancreas"
     data_dir = os.path.join(root_dir, "data")
     train_images = sorted(glob.glob(os.path.join(data_dir, "images", "*.nii.gz")))
     train_labels = sorted(glob.glob(os.path.join(data_dir, "labels", "*.nii.gz")))
@@ -157,14 +150,17 @@ if __name__ == "__main__":
 
     batch_size = 2
     max_epochs = 600
-    data_dicts = [{"image": image_name, "label": label_name} for image_name, label_name in zip(train_images, train_labels)]
-    train_files, test_files = train_test_split(data_dicts, train_size=0.75, random_state=0)
-    train_files, val_files = train_test_split(train_files, train_size=0.85, random_state=0)
-    data_split = {"train_files" : train_files, "val_files" : val_files, "test_files" : test_files}
-    with open(data_split_path, "w") as outfile: 
-        json.dump(data_split, outfile)
-
-    # with open(data_split_path) as json_file:
-    #     data_split = json.load(json_file)
-    # train_files, val_files, test_files = data_split["train_files"], data_split["val_files"], data_split["test_files"]
-    main(train_files, val_files, batch_size, load, cp_path, max_epochs, loss_curve_path)
+    if not os.path.exists(data_split_path):
+        print("creating data split")
+        data_dicts = [{"image": image_name, "label": label_name} for image_name, label_name in zip(train_images, train_labels)]
+        train_files, test_files = train_test_split(data_dicts, train_size=0.75, random_state=0)
+        train_files, val_files = train_test_split(train_files, train_size=0.85, random_state=0)
+        data_split = {"train_files" : train_files, "val_files" : val_files, "test_files" : test_files}
+        with open(data_split_path, "w") as outfile: 
+            json.dump(data_split, outfile)
+    else:
+        print(f"loading data split from {data_split_path}")
+        with open(data_split_path) as json_file:
+            data_split = json.load(json_file)
+        train_files, val_files, test_files = data_split["train_files"], data_split["val_files"], data_split["test_files"]
+    main(train_files, val_files, batch_size, load, cp_path, max_epochs, loss_curve_path, add_ce_loss=True)

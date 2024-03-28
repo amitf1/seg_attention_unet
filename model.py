@@ -10,8 +10,9 @@ def deep_supervision_loss(preds, label, base_loss_function):
     else:
         return base_loss_function(preds, label)
     n_preds = len(preds)
-    weights = 2**torch.arange(n_preds - 1, -1, -1)
-    weights = weights / weights.sum() # for n_preds=3: [4/7 , 2/7, 1/7] each layer is twice as important as it's lower neigbour
+    weights = 2**torch.arange(n_preds - 1, -1, -1) # for n_preds=3 [2^2, 2^1, 2^0]
+    weights = weights / weights.sum() 
+    # for n_preds=3 3 layers to account in the loss the weights will be: [4/7 , 2/7, 1/7] each layer is twice as important as it's lower neigbour
    
     loss = None
     for weight, pred in zip(weights, preds):
@@ -97,9 +98,14 @@ class AtentionBlock(nn.Module):
         return x_out, alpha
 
 class AttentionUNET(nn.Module):
-    def __init__(self, in_channels, out_channels, n_deep_suprvision):
+    def __init__(self, in_channels, out_channels, n_deep_supervision):
+        """
+            in_channels: number of input cahnnels to the net
+            out_cahnnels: number of out cahnnels in the output for the net
+            n_deep_supervision: num layers to stack at the output of the network for the deep supervision loss
+        """
         super(AttentionUNET, self).__init__()
-        self.n_deep_suprvision = n_deep_suprvision
+        self.n_deep_suprvision = n_deep_supervision
         self.conv1 = ConvBlock(in_channels, 64)
         self.downsample1 = nn.MaxPool3d(kernel_size=2,stride=2)
 
