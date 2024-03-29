@@ -69,7 +69,7 @@ class UpBlock(nn.Module):
 class AtentionBlock(nn.Module):
     """
     Grid Attention Block - inputs are x and g (where g denoting gating signal) feature maps from two sequential levels of a unet architecture with a factor of two in saptial dimension and n_channels 
-     (b, c, h, w, d) and (b, 2c, h//2, w//2, d//2) the output is the attention weight for x with dim (b, c, h, w, d)
+     (b, c, h, w, d) and (b, 2c, h//2, w//2, d//2) the output is x multiplied by the attention weight for x with dim (b, c, h, w, d)
     
     """
     def __init__(self, in_channels, gating_channels, inter_channels):
@@ -87,19 +87,19 @@ class AtentionBlock(nn.Module):
                              kernel_size=1, stride=2, padding=0, bias=False)
         self.W_g = nn.Conv3d(in_channels=self.gating_channels, out_channels=self.inter_channels,
                            kernel_size=1, stride=1, padding=0, bias=True)
-        self.psi = nn.Conv3d(in_channels=self.inter_channels, out_channels=1, kernel_size=1, stride=1, padding=0, bias=True)
         self.sigma1 = nn.ReLU()
+        self.psi = nn.Conv3d(in_channels=self.inter_channels, out_channels=1, kernel_size=1, stride=1, padding=0, bias=True)
         self.sigma2 = nn.Sigmoid()
         self.resampler = nn.Upsample(scale_factor=2, mode='trilinear')
 
     def forward(self, x, g):
-        x1 = self.W_x(x)
+        x1 = self.W_x(x) # strided conv to reduce x size to match the gating signal
         g1 = self.W_g(g)
         q_att = self.sigma1(x1 + g1)
         q_att = self.psi(q_att)
         alpha = self.sigma2(q_att)
-        alpha = self.resampler(alpha)
-        x_out = alpha.expand_as(x) * x
+        alpha = self.resampler(alpha) # resmaple spatial dim to match x
+        x_out = alpha.expand_as(x) * x # expand attention weight's channels to match x
         return x_out, alpha
 
 class AttentionUNET(nn.Module):
