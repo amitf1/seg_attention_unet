@@ -16,7 +16,7 @@ from monai.transforms import (
     RandAffined,
     SpatialPadd
 )
-
+from CONFIG import ROI_SIZE
 
 def get_transforms(train=True):
     if train:
@@ -30,12 +30,12 @@ def get_transforms(train=True):
                 Spacingd(keys=["image", "label"], pixdim=(2.0, 2.0, 2.0), mode=("bilinear", "nearest")),
                 SpatialPadd(
                     keys=["image", "label"],
-                    spatial_size=(96, 96, 96),
+                    spatial_size=ROI_SIZE,
                 ),
                 RandCropByPosNegLabeld(
                     keys=["image", "label"],
                     label_key="label",
-                    spatial_size=(96, 96, 96),
+                    spatial_size=ROI_SIZE,
                     pos=1,
                     neg=1,
                     num_samples=4,
@@ -45,7 +45,7 @@ def get_transforms(train=True):
                 RandAffined(
                     keys=['image', 'label'],
                     mode=('bilinear', 'nearest'),
-                    prob=1.0, spatial_size=(96, 96, 96),
+                    prob=1.0, spatial_size=ROI_SIZE,
                     rotate_range=(0, 0, np.pi/15),
                     scale_range=(0.1, 0.1, 0.1)),
             ]

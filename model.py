@@ -26,9 +26,16 @@ def deep_supervision_loss(preds, label, base_loss_function):
     return loss
 
 class DeepSuperHead(nn.Module):
-    def __init__(self, in_size, out_size, scale_factor):
+    def __init__(self, in_channels: int, out_channels: int, scale_factor: int):
+        """
+        Deep supervision output layer, takes one of the unet levels' outputs and applies conv + upsample to the final image spatial dim
+        apply before before stacking the layers and calculating deep suprvision loss
+        in_channels (int): Number of channels in the input image
+        out_channels (int): Number of channels of the final output of the net 
+        scale_factor (int): fator to scale up the Spatial dim to match the outputs spatial dim, should be 2**n where n is the inputs number of levels below the output final layer  
+        """
         super(DeepSuperHead, self).__init__()
-        self.dsh = nn.Sequential(nn.Conv3d(in_size, out_size, kernel_size=1, stride=1, padding=0),
+        self.dsh = nn.Sequential(nn.Conv3d(in_channels, out_channels, kernel_size=1, stride=1, padding=0),
                                  nn.Upsample(scale_factor=scale_factor, mode='trilinear'))
 
     def forward(self, input):
@@ -78,7 +85,8 @@ class AtentionBlock(nn.Module):
                                nn.BatchNorm3d(self.in_channels),
         )
         # according to the paper no bias on x, bias exists in g and psi
-        self.W_x = nn.Conv3d(in_channels=self.in_channels, out_channels=self.inter_channels,
+        # W_x: stride of 2 to reduce the saptial dim by a factor of 2 to match the upper layer's spatial dim to the gating signal's spatial dim
+        self.W_x = nn.Conv3d(in_channels=self.in_channels, out_channels=self.inter_channels, 
                              kernel_size=1, stride=2, padding=0, bias=False)
         self.W_g = nn.Conv3d(in_channels=self.gating_channels, out_channels=self.inter_channels,
                            kernel_size=1, stride=1, padding=0, bias=True)
@@ -100,7 +108,7 @@ class AtentionBlock(nn.Module):
 class AttentionUNET(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, n_deep_supervision: int):
         """
-            in_channels: number of input cahnnels to the net
+            in_channels: number of input channels to the net
             out_cahnnels: number of out cahnnels in the output for the net
             n_deep_supervision: num layers to stack at the output of the network for the deep supervision loss.
               allowed range (1-3) the input will be clipped if it is out of the range
@@ -169,9 +177,9 @@ def weights_init(m):
 
 
 class DeeperAttentionUNET(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, n_deep_suprvision: int):
+    def __init__(self, in_channels: int, out_channels: int, n_deep_supervision: int):
         super(DeeperAttentionUNET, self).__init__()
-        self.n_deep_suprvision = torch.clip(torch.tensor(n_deep_suprvision), min=1, max=3).item()
+        self.n_deep_suprvision = torch.clip(torch.tensor(n_deep_supervision), min=1, max=3).item()
         self.conv1 = ConvBlock(in_channels, 64)
         self.downsample1 = nn.MaxPool3d(kernel_size=2, stride=2)
 
@@ -227,7 +235,7 @@ class DeeperAttentionUNET(nn.Module):
         attn4, _ = self.attn4(x1, x8)
         x9 = self.conv9(self.upsample4(attn4, x8))
         if self.training:
-            out = torch.cat([x9.unsqueeze(1), self.dsh1(x8), self.dsh2(x7)][:self.n_deep_suprvision], 1)
+            out = torch.cat([x9.unsqueeze(1), self.dsh1(x8), self.dsh2(x7)][:self.n_deep_supervision], 1)
         else:
             out = x9
         return out
