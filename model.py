@@ -72,9 +72,15 @@ class AtentionBlock(nn.Module):
      (b, c, h, w, d) and (b, 2c, h//2, w//2, d//2) the output is x multiplied by the attention weight for x with dim (b, c, h, w, d)
     
     """
-    def __init__(self, in_channels, gating_channels, inter_channels):
+    def __init__(self, in_channels, gating_channels, inter_channels, conv_mapping=False):
+        """
+        in_channels: number of channels in x - the upper layer input
+        gating_channels: number of channels of the query/gating signal from the lower level of unet
+        inter_channels: num of channels to map x and gatong signal
+        conv_mapping (bool): if True use convolution as a weighted aggregation of x and g instead of regular sum
+        """
         super(AtentionBlock, self).__init__()
-
+        self.conv_mapping = conv_mapping
         self.in_channels = in_channels
         self.gating_channels = gating_channels
         self.inter_channels = inter_channels
@@ -87,6 +93,9 @@ class AtentionBlock(nn.Module):
                              kernel_size=1, stride=2, padding=0, bias=False)
         self.W_g = nn.Conv3d(in_channels=self.gating_channels, out_channels=self.inter_channels,
                            kernel_size=1, stride=1, padding=0, bias=True)
+        if self.conv_mapping:
+            self.aggragate = nn.Conv3d(in_channels=2*self.inter_channels, out_channels=self.inter_channels, 
+                             kernel_size=1, stride=1, padding=0, bias=False)
         self.sigma1 = nn.ReLU()
         self.psi = nn.Conv3d(in_channels=self.inter_channels, out_channels=1, kernel_size=1, stride=1, padding=0, bias=True)
         self.sigma2 = nn.Sigmoid()
@@ -95,7 +104,8 @@ class AtentionBlock(nn.Module):
     def forward(self, x, g):
         x1 = self.W_x(x) # strided conv to reduce x size to match the gating signal
         g1 = self.W_g(g)
-        q_att = self.sigma1(x1 + g1)
+        x1_g1 = x1 + g1 if not self.conv_mapping else self.aggragate(torch.cat((x1, g1), dim=1)) 
+        q_att = self.sigma1(x1_g1)
         q_att = self.psi(q_att)
         alpha = self.sigma2(q_att)
         alpha = self.resampler(alpha) # resmaple spatial dim to match x
@@ -106,16 +116,19 @@ class AttentionUNET(nn.Module):
     """
     Implementation of https://arxiv.org/pdf/1804.03999.pdf
     """
-    def __init__(self, in_channels: int, out_channels: int, n_deep_supervision: int):
+    def __init__(self, in_channels: int, out_channels: int, n_deep_supervision: int, conv_mapping: bool=False):
         """
             in_channels: number of input channels to the net
             out_cahnnels: number of out cahnnels in the output for the net
             n_deep_supervision: num layers to stack at the output of the network for the deep supervision loss.
               allowed range (1-3) the input will be clipped if it is out of the range
+            conv_mapping (bool): if True use convolution as a weighted aggregation of x and g instead of regular sum in each attention gate
+
         """
         super(AttentionUNET, self).__init__()
         
-        self.n_deep_suprvision = torch.clip(torch.tensor(n_deep_supervision), min=1, max=3).item()
+        self.n_deep_supervision = torch.clip(torch.tensor(n_deep_supervision), min=1, max=3).item()
+        self.conv_mapping = conv_mapping
         ## down path ##
         self.conv1 = ConvBlock(in_channels, 64)
         self.downsample1 = nn.MaxPool3d(kernel_size=2,stride=2)
@@ -130,16 +143,16 @@ class AttentionUNET(nn.Module):
         self.conv4 = ConvBlock(256, 512)
         
         ## up path ##
-        self.attn1 = AtentionBlock(256, 512, 256) # out 256
+        self.attn1 = AtentionBlock(256, 512, 256, conv_mapping) # out 256
         self.upsample1 = UpBlock() # out 512+256
         self.conv5 = ConvBlock(512+256, 256)
         
-        self.attn2 = AtentionBlock(128, 256, 128) # out 128
+        self.attn2 = AtentionBlock(128, 256, 128, conv_mapping) # out 128
         self.upsample2 = UpBlock() # out 256+128
         self.conv6 = ConvBlock(256+128, 128)
 
         
-        self.attn3 = AtentionBlock(64, 128, 64) #out 64
+        self.attn3 = AtentionBlock(64, 128, 64, conv_mapping) #out 64
         self.upsample3 = UpBlock() # out 128+64
         self.conv7 = ConvBlock(128+64, out_channels)
 
@@ -166,7 +179,7 @@ class AttentionUNET(nn.Module):
         attn3, _ = self.attn3(x1, x6)
         x7 = self.conv7(self.upsample3(attn3, x6))
         if self.training: # deep-supervision output
-            out = torch.cat([x7.unsqueeze(1), self.dsh1(x6), self.dsh2(x5)][:self.n_deep_suprvision], 1)
+            out = torch.cat([x7.unsqueeze(1), self.dsh1(x6), self.dsh2(x5)][:self.n_deep_supervision], 1)
         else: # only the final output for inference/val/test
             out = x7
         return out
@@ -183,15 +196,19 @@ def weights_init(m):
 
 
 class DeeperAttentionUNET(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, n_deep_supervision: int):
+    def __init__(self, in_channels: int, out_channels: int, n_deep_supervision: int, conv_mapping: bool=False):
         """
             in_channels: number of input channels to the net
             out_cahnnels: number of out cahnnels in the output for the net
             n_deep_supervision: num layers to stack at the output of the network for the deep supervision loss.
               allowed range (1-3) the input will be clipped if it is out of the range
+            conv_mapping (bool): if True use convolution as a weighted aggregation of x and g instead of regular sum in each attention gate
+
         """
         super(DeeperAttentionUNET, self).__init__()
-        self.n_deep_suprvision = torch.clip(torch.tensor(n_deep_supervision), min=1, max=3).item()
+        self.n_deep_supervision = torch.clip(torch.tensor(n_deep_supervision), min=1, max=3).item()
+        self.conv_mapping = conv_mapping
+
         self.conv1 = ConvBlock(in_channels, 64)
         self.downsample1 = nn.MaxPool3d(kernel_size=2, stride=2)
 
@@ -206,20 +223,20 @@ class DeeperAttentionUNET(nn.Module):
 
         self.conv5 = ConvBlock(512, 1024)
 
-        self.attn1 = AtentionBlock(512, 1024, 512)  # out 512
+        self.attn1 = AtentionBlock(512, 1024, 512, conv_mapping)  # out 512
 
         self.upsample1 = UpBlock()  # out 1024+512
         self.conv6 = ConvBlock(1024 + 512, 512)
 
-        self.attn2 = AtentionBlock(256, 512, 256)  # out 256
+        self.attn2 = AtentionBlock(256, 512, 256, conv_mapping)  # out 256
         self.upsample2 = UpBlock()  # out 512+256
         self.conv7 = ConvBlock(512 + 256, 256)
 
-        self.attn3 = AtentionBlock(128, 256, 128)  # out 128
+        self.attn3 = AtentionBlock(128, 256, 128, conv_mapping)  # out 128
         self.upsample3 = UpBlock()  # out 256+128
         self.conv8 = ConvBlock(256 + 128, 128)
 
-        self.attn4 = AtentionBlock(64, 128, 64)  # out 64
+        self.attn4 = AtentionBlock(64, 128, 64, conv_mapping)  # out 64
         self.upsample4 = UpBlock()  # out 128+64
         self.conv9 = ConvBlock(128 + 64, out_channels)
 

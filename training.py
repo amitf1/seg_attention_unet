@@ -90,7 +90,7 @@ if __name__ == "__main__":
     data_dir = os.path.join(root_dir, "data")
     train_images = sorted(glob.glob(os.path.join(data_dir, "images", "*.nii.gz")))
     train_labels = sorted(glob.glob(os.path.join(data_dir, "labels", "*.nii.gz")))
-    experiment_dir = os.path.join(root_dir, "deeper")
+    experiment_dir = os.path.join(root_dir, "conv_mapping")
     if not os.path.exists(experiment_dir):
         os.mkdir(experiment_dir)
     loss_curve_path = os.path.join(experiment_dir, "loss.png")
@@ -100,4 +100,4 @@ if __name__ == "__main__":
     batch_size = 2
     max_epochs = 600
     train_files, val_files, _ = get_files(data_split_path, train_images, train_labels)
-    main(train_files, val_files, batch_size, load, cp_path, max_epochs, loss_curve_path, add_ce_loss=False, deeper_net=True)
+    main(train_files, val_files, batch_size, load, cp_path, max_epochs, loss_curve_path, add_ce_loss=False, deeper_net=False)
