@@ -64,9 +64,6 @@ class UpBlock(nn.Module):
 
     def forward(self, inputs1, inputs2):
         inputs2 = self.up(inputs2)
-        # offset = outputs2.size()[2] - inputs1.size()[2]
-        # padding = 2 * [offset // 2, offset // 2, 0]
-        # outputs1 = F.pad(inputs1, padding)
         return torch.cat([inputs1, inputs2], 1)
     
 class AtentionBlock(nn.Module):
