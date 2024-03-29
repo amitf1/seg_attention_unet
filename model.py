@@ -106,6 +106,9 @@ class AtentionBlock(nn.Module):
         return x_out, alpha
 
 class AttentionUNET(nn.Module):
+    """
+    Implementation of https://arxiv.org/pdf/1804.03999.pdf
+    """
     def __init__(self, in_channels: int, out_channels: int, n_deep_supervision: int):
         """
             in_channels: number of input channels to the net
@@ -116,6 +119,7 @@ class AttentionUNET(nn.Module):
         super(AttentionUNET, self).__init__()
         
         self.n_deep_suprvision = torch.clip(torch.tensor(n_deep_supervision), min=1, max=3).item()
+        ## down path ##
         self.conv1 = ConvBlock(in_channels, 64)
         self.downsample1 = nn.MaxPool3d(kernel_size=2,stride=2)
 
@@ -125,8 +129,10 @@ class AttentionUNET(nn.Module):
         self.conv3 = ConvBlock(128, 256)
         self.downsample3 = nn.MaxPool2d(kernel_size=2,stride=2)
 
+        ## bottleneck ##
         self.conv4 = ConvBlock(256, 512)
         
+        ## up path ##
         self.attn1 = AtentionBlock(256, 512, 256) # out 256
         self.upsample1 = UpBlock() # out 512+256
         self.conv5 = ConvBlock(512+256, 256)
@@ -146,22 +152,25 @@ class AttentionUNET(nn.Module):
         self.apply(weights_init)
 
     def forward(self, x):
+        ## down path ##
         x1 = self.conv1(x)
         x1_d = self.downsample1(x1)
         x2 = self.conv2(x1_d)
         x2_d = self.downsample1(x2)
         x3 = self.conv3(x2_d)
         x3_d = self.downsample1(x3)
+        ## bottleneck ##
         x4 = self.conv4(x3_d)
+        ## up path ##
         attn1, _ = self.attn1(x3, x4)
         x5 = self.conv5(self.upsample1(attn1, x4))
         attn2, _ = self.attn2(x2, x5)
         x6 = self.conv6(self.upsample2(attn2, x5))
         attn3, _ = self.attn3(x1, x6)
         x7 = self.conv7(self.upsample3(attn3, x6))
-        if self.training:
+        if self.training: # deep-supervision output
             out = torch.cat([x7.unsqueeze(1), self.dsh1(x6), self.dsh2(x5)][:self.n_deep_suprvision], 1)
-        else:
+        else: # only the final output for inference/val/test
             out = x7
         return out
 
@@ -178,6 +187,12 @@ def weights_init(m):
 
 class DeeperAttentionUNET(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, n_deep_supervision: int):
+        """
+            in_channels: number of input channels to the net
+            out_cahnnels: number of out cahnnels in the output for the net
+            n_deep_supervision: num layers to stack at the output of the network for the deep supervision loss.
+              allowed range (1-3) the input will be clipped if it is out of the range
+        """
         super(DeeperAttentionUNET, self).__init__()
         self.n_deep_suprvision = torch.clip(torch.tensor(n_deep_supervision), min=1, max=3).item()
         self.conv1 = ConvBlock(in_channels, 64)
@@ -217,6 +232,7 @@ class DeeperAttentionUNET(nn.Module):
         self.apply(weights_init)
 
     def forward(self, x):
+        ## down path ##
         x1 = self.conv1(x)
         x1_d = self.downsample1(x1)
         x2 = self.conv2(x1_d)
@@ -225,7 +241,11 @@ class DeeperAttentionUNET(nn.Module):
         x3_d = self.downsample1(x3)
         x4 = self.conv4(x3_d)
         x4_d = self.downsample1(x4)
+
+        ## bottleneck ##
         x5 = self.conv5(x4_d)
+
+        ## up path ##
         attn1, _ = self.attn1(x4, x5)
         x6 = self.conv6(self.upsample1(attn1, x5))
         attn2, _ = self.attn2(x3, x6)
@@ -234,9 +254,9 @@ class DeeperAttentionUNET(nn.Module):
         x8 = self.conv8(self.upsample3(attn3, x7))
         attn4, _ = self.attn4(x1, x8)
         x9 = self.conv9(self.upsample4(attn4, x8))
-        if self.training:
+        if self.training: # deep-supervision output
             out = torch.cat([x9.unsqueeze(1), self.dsh1(x8), self.dsh2(x7)][:self.n_deep_supervision], 1)
-        else:
+        else: # only the final output for inference/val/test
             out = x9
         return out
 
