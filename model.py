@@ -77,7 +77,8 @@ class AtentionBlock(nn.Module):
         in_channels: number of channels in x - the upper layer input
         gating_channels: number of channels of the query/gating signal from the lower level of unet
         inter_channels: num of channels to map x and gatong signal
-        conv_mapping (bool): if True use convolution as a weighted aggregation of x and g instead of regular sum
+        conv_mapping (bool): if True use convolution as a weighted aggregation of x and g instead of regular sum 
+                             use False for the originl implementation
         """
         super(AtentionBlock, self).__init__()
         self.conv_mapping = conv_mapping
@@ -123,7 +124,7 @@ class AttentionUNET(nn.Module):
             n_deep_supervision: num layers to stack at the output of the network for the deep supervision loss.
               allowed range (1-3) the input will be clipped if it is out of the range
             conv_mapping (bool): if True use convolution as a weighted aggregation of x and g instead of regular sum in each attention gate
-
+                                 use False for the originl implementation
         """
         super(AttentionUNET, self).__init__()
         
@@ -203,7 +204,7 @@ class DeeperAttentionUNET(nn.Module):
             n_deep_supervision: num layers to stack at the output of the network for the deep supervision loss.
               allowed range (1-3) the input will be clipped if it is out of the range
             conv_mapping (bool): if True use convolution as a weighted aggregation of x and g instead of regular sum in each attention gate
-
+                                 use False for the originl implementation
         """
         super(DeeperAttentionUNET, self).__init__()
         self.n_deep_supervision = torch.clip(torch.tensor(n_deep_supervision), min=1, max=3).item()
