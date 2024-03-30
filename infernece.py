@@ -41,7 +41,7 @@ def validation(model, val_loader, device, save_images_path=None):
     post_label = Compose([AsDiscrete(to_onehot=2)])
 
     if save_images_path is not None:
-        # if saving images reverse one hot by argmax to go back to one channel segmentation map
+        # if saving images - reverse one hot by argmax to go back to one channel segmentation map
         save_pred = Compose([AsDiscrete(argmax=True), SaveImage(output_dir=save_images_path, output_postfix="pred", separate_folder=False)])
         save_label = Compose([AsDiscrete(argmax=True), SaveImage(output_dir=save_images_path, output_postfix="label", separate_folder=False)])
         save_image = SaveImage(output_dir=save_images_path, output_postfix="image", separate_folder=False)
@@ -57,11 +57,11 @@ def validation(model, val_loader, device, save_images_path=None):
             )
             
             sw_batch_size = 4
-            # run model inference in sliding windows over patches of the real image, aggregating the results with gaussian weight and 0.25 overalp (for smoothness) to a full image
+            # run model inference using sliding windows over patches of the real image, aggregating the results with gaussian weight and 0.25 overalp (for smoothness) to a full image
             val_outputs = sliding_window_inference(val_inputs, ROI_SIZE, sw_batch_size, model, overlap=0.25, mode="gaussian") 
-            decol_outputs = decollate_batch(val_outputs)
+            decol_outputs = decollate_batch(val_outputs) # 1 tensor to a list of batch tensors
             decol_labels = decollate_batch(val_labels)
-            val_outputs = [post_pred(i) for i in decol_outputs] # 
+            val_outputs = [post_pred(i) for i in decol_outputs] # apply activations and one hot encoding
             val_labels = [post_label(i) for i in decol_labels]
             # compute metric for current iteration
             dice_metric(y_pred=val_outputs, y=val_labels)
@@ -76,7 +76,7 @@ def validation(model, val_loader, device, save_images_path=None):
                     save_label(val_labels[i]) 
                     save_pred(val_outputs[i])
         mean_precision, mean_recall = torch.mean(torch.tensor(precision)), torch.mean(torch.tensor(recall))
-        # aggregate the final result
+        # aggregate the final result - output is the mean over the batches for each channel, 0 is the background 
         mean_dice = dice_metric.aggregate()
         mean_surface_distance = surface_distance.aggregate()
         # reset the status for next validation round

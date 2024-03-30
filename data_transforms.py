@@ -47,18 +47,21 @@ def get_transforms(train=True):
                     mode=('bilinear', 'nearest'),
                     prob=1.0, spatial_size=ROI_SIZE,
                     rotate_range=(0, 0, np.pi/15),
-                    scale_range=(0.1, 0.1, 0.1)),
+                    scale_range=(0.1, 0.1, 0.1))
             ]
         )
     else:
         transforms = Compose(
             [
-                LoadImaged(keys=["image", "label"]),
-                EnsureChannelFirstd(keys=["image", "label"]),
+                LoadImaged(keys=["image", "label"], ensure_channel_first=True),
                 NormalizeIntensityd(keys=["image"]),
                 CropForegroundd(keys=["image", "label"], source_key="image"),
                 Orientationd(keys=["image", "label"], axcodes="RAS"),
                 Spacingd(keys=["image", "label"], pixdim=(2.0, 2.0, 2.0), mode=("bilinear", "nearest")),
+                SpatialPadd(
+                    keys=["image", "label"],
+                    spatial_size=ROI_SIZE,
+                )
             ]
         )
     return transforms
