@@ -117,10 +117,10 @@ if __name__ == "__main__":
     data_dir = os.path.join(root_dir, "data")
     train_images = sorted(glob.glob(os.path.join(data_dir, "images", "*.nii.gz")))
     train_labels = sorted(glob.glob(os.path.join(data_dir, "labels", "*.nii.gz")))
-    experiment_dir = "baseline"
+    experiment_dir = "conv_mapping"
     data_split_path = os.path.join(root_dir, experiment_dir, "data_split.json")
     cp_path = os.path.join(root_dir, experiment_dir, "best_metric_model.pth")
     save_images_path = os.path.join(root_dir, experiment_dir, "outputs")
     if not os.path.exists(save_images_path):
         os.mkdir(save_images_path)
-    inference(data_split_path, cp_path, save_images_path=None)
+    inference(data_split_path, cp_path, save_images_path=None, deeper_net=False)
