@@ -14,7 +14,7 @@ from monai.transforms import (
 )
 from data_transforms import get_transforms
 from utils import load_checkpoint
-from CONFIG import ROI_SIZE, NET_ARGS
+from CONFIG import ROI_SIZE, NET_ARGS, NUM_LABELS, EXPERIMENT_NAME, IMAGES_FOLDER, LABELS_FOLDER
 from model import AttentionUNET, DeeperAttentionUNET
 
 def calculate_precision_recall(pred_label, true_label, label=1):
@@ -32,13 +32,13 @@ def calculate_precision_recall(pred_label, true_label, label=1):
     
     return precision.item(), recall.item()
 
-def validation(model, val_loader, device, save_images_path=None):
+def validation(model, val_loader, device, save_images_path=None, num_labels=2):
     dice_metric = DiceMetric(include_background=True, reduction="mean_batch")
     surface_distance = SurfaceDistanceMetric(include_background=True, reduction="mean_batch", symmetric=True)
     # applying final activation to the output and creating one_hot segmentation for calculating metrics
-    post_pred = Compose([Activations(softmax=True), AsDiscrete(argmax=True, to_onehot=2)]) 
+    post_pred = Compose([Activations(softmax=True), AsDiscrete(argmax=True, to_onehot=num_labels)]) 
     # creating one_hot segmentation from the ground truth for calculating metrics
-    post_label = Compose([AsDiscrete(to_onehot=2)])
+    post_label = Compose([AsDiscrete(to_onehot=num_labels)])
 
     if save_images_path is not None:
         # if saving images - reverse one hot by argmax to go back to one channel segmentation map
@@ -84,7 +84,7 @@ def validation(model, val_loader, device, save_images_path=None):
         surface_distance.reset()
     return mean_dice, mean_surface_distance, mean_precision, mean_recall
 
-def inference(data_split_path, cp_path, save_images_path=None, deeper_net=False):
+def inference(data_split_path, cp_path, save_images_path=None, deeper_net=False,  num_labels=2):
     with open(data_split_path) as json_file:
         data_split = json.load(json_file)
         test_files = data_split["test_files"]
@@ -97,7 +97,7 @@ def inference(data_split_path, cp_path, save_images_path=None, deeper_net=False)
     model, _, last_epoch, best_dice = load_checkpoint(cp_path, model) # ignore optimizer in inference
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
-    mean_dice, mean_surface_distance, mean_precision, mean_recall = validation(model, test_loader, device=device,save_images_path=save_images_path)
+    mean_dice, mean_surface_distance, mean_precision, mean_recall = validation(model, test_loader, device=device,save_images_path=save_images_path, num_labels=num_labels)
     label_dice_test = mean_dice[1] # get only the label metric, ignore background - label 0
     label_sd_test = mean_surface_distance[1]
     best_dice_val = best_dice[1]
@@ -114,13 +114,11 @@ def inference(data_split_path, cp_path, save_images_path=None, deeper_net=False)
     
 if __name__ == "__main__":
     root_dir = ""
-    data_dir = os.path.join(root_dir, "data")
-    train_images = sorted(glob.glob(os.path.join(data_dir, "images", "*.nii.gz")))
-    train_labels = sorted(glob.glob(os.path.join(data_dir, "labels", "*.nii.gz")))
-    experiment_dir = "conv_mapping"
-    data_split_path = os.path.join(root_dir, experiment_dir, "data_split.json")
-    cp_path = os.path.join(root_dir, experiment_dir, "best_metric_model.pth")
-    save_images_path = os.path.join(root_dir, experiment_dir, "outputs")
+    data_dir = os.path.join(root_dir, "Subtask1")
+    data_split_path = os.path.join(root_dir, EXPERIMENT_NAME, "data_split.json")
+    cp_path = os.path.join(root_dir, EXPERIMENT_NAME, "best_metric_model.pth")
+    save_images_path = os.path.join(root_dir, EXPERIMENT_NAME, "outputs")
+    num_labels = 5 # (4 + background)
     if not os.path.exists(save_images_path):
         os.mkdir(save_images_path)
-    inference(data_split_path, cp_path, save_images_path=None, deeper_net=False)
+    inference(data_split_path, cp_path, save_images_path=save_images_path, deeper_net=True, num_labels=NUM_LABELS)

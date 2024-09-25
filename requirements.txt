@@ -108,7 +108,7 @@ pyparsing==3.1.2
 PySocks==1.7.1
 python-dateutil==2.9.0.post0
 PythonWebHDFS==0.2.3
-pytorch-ignite==0.4.11
+# pytorch-ignite==0.4.11
 pytz==2024.1
 PyYAML==6.0.1
 querystring-parser==1.2.4
@@ -136,9 +136,9 @@ termcolor==2.4.0
 threadpoolctl==3.4.0
 tifffile==2024.2.12
 tokenizers==0.12.1
-torch==2.2.1+cu118
-torchaudio==2.2.1+cu118
-torchvision==0.17.1+cu118
+# torch==2.2.1+cu118
+# torchaudio==2.2.1+cu118
+# torchvision==0.17.1+cu118
 tqdm==4.66.2
 transformers==4.21.3
 triton==2.2.0

@@ -3,16 +3,17 @@ import torch
 import json
 from datetime import datetime
 from sklearn.model_selection import train_test_split
-
+from torch.nn import DataParallel
 
 def save_checkpoint(cp_path, model, optimizer, last_epoch, best_metric, epoch_loss):
+    model_state_dict = model.module.state_dict() if isinstance(model, DataParallel) else model.state_dict()
     checkpoint = {
         'time': datetime.now().strftime("%y_%m_%d_%H_%M_%S"),
         'epoch': last_epoch,
         'optimizer_state_dict': optimizer.state_dict(),
         'best_metric': best_metric,
         'epoch_loss': epoch_loss,
-        'model_state_dict': model.state_dict(),
+        'model_state_dict': model_state_dict,
 
         }
 
@@ -20,7 +21,10 @@ def save_checkpoint(cp_path, model, optimizer, last_epoch, best_metric, epoch_lo
 
 def load_checkpoint(cp_path, model, optimizer=None):
     checkpoint = torch.load(cp_path)
-    model.load_state_dict(checkpoint['model_state_dict'])
+    if isinstance(model, DataParallel):
+        model.module.load_state_dict(checkpoint['model_state_dict'])
+    else:
+        model.load_state_dict(checkpoint['model_state_dict'])
     if optimizer is not None:
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     last_epoch = checkpoint['epoch']
@@ -44,3 +48,13 @@ def get_files(data_split_path, train_images, train_labels):
             data_split = json.load(json_file)
         train_files, val_files, test_files = data_split["train_files"], data_split["val_files"], data_split["test_files"]
     return train_files, val_files, test_files
+
+
+if __name__ == "__main__":
+    root_dir = ""
+ 
+    data_split_path = os.path.join(root_dir, "abdomen_4_labels", "data_split.json")
+    with open(data_split_path) as json_file:
+        data_split = json.load(json_file)
+    test_files = data_split["test_files"]
+    print(test_files)

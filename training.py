@@ -4,6 +4,7 @@ import os
 from monai.utils import set_determinism
 from monai.losses import DiceLoss, DiceCELoss
 from monai.data import DataLoader, Dataset
+from torch.nn import DataParallel
 import torch
 import matplotlib.pyplot as plt
 import glob
@@ -11,10 +12,10 @@ from data_transforms import get_transforms
 from model import AttentionUNET, DeeperAttentionUNET, deep_supervision_loss
 from infernece import validation
 from utils import load_checkpoint, save_checkpoint, get_files
-from CONFIG import NET_ARGS
+from CONFIG import NET_ARGS, NUM_LABELS, EXPERIMENT_NAME
 
 
-def main(train_files, val_files, batch_size, load, cp_path, max_epochs, loss_curve_path, add_ce_loss=False, deeper_net=False):
+def main(train_files, val_files, batch_size, load, cp_path, max_epochs, loss_curve_path, add_ce_loss=False, deeper_net=False, parallel=True):
 
     set_determinism(seed=0) # set the random seed for reproducabilty
     train_transforms = get_transforms(train=True)
@@ -28,7 +29,10 @@ def main(train_files, val_files, batch_size, load, cp_path, max_epochs, loss_cur
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model = DeeperAttentionUNET(**NET_ARGS) if deeper_net else AttentionUNET(**NET_ARGS)
-    model.to(device)
+    if parallel:
+        model = DataParallel(model).to(device)
+    else:
+        model.to(device)
     loss_function = DiceCELoss(to_onehot_y=True, softmax=True) if add_ce_loss else DiceLoss(to_onehot_y=True, softmax=True) 
     optimizer = torch.optim.Adam(model.parameters(), 1e-4)
     print(loss_function)
@@ -72,7 +76,7 @@ def main(train_files, val_files, batch_size, load, cp_path, max_epochs, loss_cur
         plt.savefig(loss_curve_path)
 
         if (epoch + 1) % val_interval == 0:
-            metric, _, _ , _ = validation(model, val_loader, device)
+            metric, _, _ , _ = validation(model, val_loader, device, num_labels=NUM_LABELS)
             metric_values.append(metric)
             if metric[1] > best_metric:
                 best_metric = metric[1]
@@ -86,11 +90,12 @@ def main(train_files, val_files, batch_size, load, cp_path, max_epochs, loss_cur
             )
 
 if __name__ == "__main__":
-    root_dir = ""
-    data_dir = os.path.join(root_dir, "data")
-    train_images = sorted(glob.glob(os.path.join(data_dir, "images", "*.nii.gz")))
-    train_labels = sorted(glob.glob(os.path.join(data_dir, "labels", "*.nii.gz")))
-    experiment_dir = os.path.join(root_dir, "conv_mapping")
+    # os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+    root_dir = "/nvcr/stor/fast/afeldman/data/ct"
+    data_dir = os.path.join(root_dir, "Subtask1")
+    train_images = sorted(glob.glob(os.path.join(data_dir, "TrainImage", "*.nii.gz")))
+    train_labels = sorted(glob.glob(os.path.join(data_dir, "TrainMask", "*.nii.gz")))
+    experiment_dir = os.path.join(root_dir, EXPERIMENT_NAME)
     if not os.path.exists(experiment_dir):
         os.mkdir(experiment_dir)
     loss_curve_path = os.path.join(experiment_dir, "loss.png")
@@ -100,4 +105,4 @@ if __name__ == "__main__":
     batch_size = 2
     max_epochs = 600
     train_files, val_files, _ = get_files(data_split_path, train_images, train_labels)
-    main(train_files, val_files, batch_size, load, cp_path, max_epochs, loss_curve_path, add_ce_loss=False, deeper_net=False)
+    main(train_files, val_files, batch_size, load, cp_path, max_epochs, loss_curve_path, add_ce_loss=True, deeper_net=True, parallel=False)
